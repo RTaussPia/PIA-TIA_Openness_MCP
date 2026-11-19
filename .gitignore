@@ -17,5 +17,4 @@ Desktop.ini
 *.pdb
 bin-build/
 
-# python 缓存
 __pycache__/
