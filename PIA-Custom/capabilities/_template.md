@@ -8,7 +8,7 @@
 
 | Funktions- oder Toolname | Herkunft / Quellpfad | Zweck und Aufrufbedingung | Status |
 | --- | --- | --- | --- |
-| `Funktionsname` | Upstream-MCP oder eigener Quellpfad | Wofür und wann wird die Funktion aufgerufen? | vorhanden / geplant |
+| `FunctionName` | Upstream-MCP oder eigener Quellpfad | Wofür und wann wird die Funktion aufgerufen? | vorhanden / geplant |
 
 ## Beispiel zur Prüfung
 

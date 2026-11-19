@@ -2,7 +2,7 @@
 
 ## 1. Jede Fähigkeit bekommt einen versionierten Prompt
 
-Lege für jede neue Fähigkeit oder eigenständig nutzbare Funktion eine Datei unter `PIA-Custom/Faehigkeiten/<Name>.md` an. Verwende einen sprechenden Dateinamen und die [Vorlage](Faehigkeiten/_Vorlage.md). Hilfsfunktionen dokumentierst du bei der Fähigkeit, die sie verwendet.
+Lege für jede neue Fähigkeit oder eigenständig nutzbare Funktion eine Datei unter `PIA-Custom/capabilities/` an. Verwende einen aussagekräftigen englischen Namen wie `ComparePlcBlocks.md` und die [Vorlage](capabilities/_template.md). Hilfsfunktionen dokumentierst du bei der Fähigkeit, die sie verwendet.
 
 Schreibe den Prompt als eigenständig verständlichen Auftrag. Benenne die Eingaben, das gewünschte Verhalten und das überprüfbare Ergebnis. Bei Schreibzugriffen muss erkennbar sein, was sich in TIA ändern darf.
 
