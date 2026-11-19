@@ -12,6 +12,8 @@ Für eine manuelle stdio-Konfiguration im MCP-Client den absoluten Pfad zur `Tia
 
 Eigene MCP-Tools, Wrapper und die zugehörigen Tests gehören nach [PIA-Custom/](PIA-Custom/). Wrapper können vorhandene TIA-Tools über die öffentliche MCP-Schnittstelle aufrufen. So lassen sich Erweiterungen entwickeln und der Upstream-Server separat aktualisieren.
 
+Prompts und benötigte Funktionen werden pro Fähigkeit dokumentiert. Für neue Fähigkeiten gelten die [Entwicklungsregeln](PIA-Custom/AGENTS.md).
+
 ## Upstream-Updates
 
 `origin` zeigt auf den Fork und `upstream` auf das Original. In einem neuen Klon lässt sich der Upstream-Remote mit `git remote add upstream https://github.com/bulaofen0036-coder/TIA_Portal_Openness_MCP.git` ergänzen.
