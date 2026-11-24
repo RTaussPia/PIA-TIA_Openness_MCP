@@ -6,13 +6,40 @@ Use US English for all new code and all new file and directory names in this rep
 
 Preserve existing upstream names and external API identifiers when referencing them.
 
-## Reviewing rule changes
+## Reviewing Markdown, rules, and conventions
+
+Before creating, editing, or deleting a Markdown file anywhere in this
+repository, show its path and the exact proposed changes to the user.
+Apply the changes only after the user explicitly approves that version.
+If the proposed wording changes after approval, show the revised proposal
+and obtain approval again before applying it.
+
+Follow the same review process before adding or revising a repository rule
+or project convention, regardless of which file contains it.
 
 Before adding or revising a rule in any AGENTS.md file in this repository:
 
 1. Show the file path and a diff of the proposed wording.
 2. Suggest one concrete improvement to the wording and explain what it clarifies.
 3. Wait for the user to approve the wording before editing the file.
+
+## Answering TIA Portal questions
+
+- Determine whether the user's question concerns TIA Portal, even when
+  TIA Portal is not named explicitly. Use the conversation and the
+  documented PIA terminology to recognize the context.
+- For each TIA Portal question, check which parts the current MCP tools
+  can answer, individually or in combination. If coverage is unclear,
+  inspect the registered tools with `tools/list` or `FindTools`.
+- Use the available tools for the supported parts. State what was
+  verified and what remains open. For each open part, explain whether
+  a prerequisite is missing, a tool call failed, or the current MCP
+  tools lack the required capability.
+- When a capability is missing, explain what a new or extended MCP tool
+  would need to do and ask whether the user wants it developed. Wait for
+  explicit approval before implementing or running it. This also applies
+  to temporary tools, one-off scripts, and direct API calls that would
+  bypass the limits of the existing MCP tools.
 
 ## 1. Core and compatibility
 

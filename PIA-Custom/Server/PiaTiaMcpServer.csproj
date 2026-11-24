@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <RuntimeFolder>../../runtime/v21</RuntimeFolder>
+    <Upstream>../../tools/tiaportal-mcp/src/TiaMcpServer</Upstream>
+    <!-- Use the binding policy shipped with the engine, including .NET Framework facade unification. -->
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <AppConfig>$(RuntimeFolder)/TiaMcpServer.exe.config</AppConfig>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="../knowledge/TiaPortalProjectConventions.md" Link="knowledge/TiaPortalProjectConventions.md"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../knowledge/PiaIndustrialAppSuiteLibrary.md" Link="knowledge/PiaIndustrialAppSuiteLibrary.md"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../capabilities/CheckLibraryUsage.md" Link="capabilities/CheckLibraryUsage.md"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../capabilities/ExportExcel.md" Link="capabilities/ExportExcel.md"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="TiaMcpServer" HintPath="$(RuntimeFolder)/TiaMcpServer.exe" />
+    <Reference Include="$(RuntimeFolder)/*.dll" />
+    <None Include="$(RuntimeFolder)/*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="$(Upstream)/Siemens/CrossReferenceFlattener.cs;$(Upstream)/ModelContextProtocol/PortalFailureClassifier.cs" LinkBase="Upstream" />
+    <PackageReference Include="Siemens.Collaboration.Net.TiaPortal.Packages.Openness" Version="21.0.1765349347" />
+  </ItemGroup>
+</Project>
