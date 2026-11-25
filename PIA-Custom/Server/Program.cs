@@ -26,10 +26,18 @@ internal static class Program
             McpServerTool.Create(typeof(LibraryUsageTool).GetMethod(nameof(LibraryUsageTool.CheckLibraryUsage))!),
             McpServerTool.Create(typeof(ProjectStructureTool).GetMethod(nameof(ProjectStructureTool.GetProjectStructure))!),
             McpServerTool.Create(typeof(ProjectKnowledgeTool).GetMethod(nameof(ProjectKnowledgeTool.GetProjectKnowledge))!),
+            McpServerTool.Create(typeof(PlcInspectionTools).GetMethod(nameof(PlcInspectionTools.GetPlcBlockInterface))!),
+            McpServerTool.Create(typeof(PlcInspectionTools).GetMethod(nameof(PlcInspectionTools.GetPlcCallConnections))!),
+            McpServerTool.Create(typeof(PlcSourceTools).GetMethod(nameof(PlcSourceTools.GetPlcBlockSource))!),
+            McpServerTool.Create(typeof(PlcSourceTools).GetMethod(nameof(PlcSourceTools.PlanPlcFbdAppend))!),
+            McpServerTool.Create(typeof(PlcSourceTools).GetMethod(nameof(PlcSourceTools.ApplyPlcFbdAppend))!),
+            McpServerTool.Create(typeof(PlcSourceTools).GetMethod(nameof(PlcSourceTools.PlanPlcSclAppend))!),
+            McpServerTool.Create(typeof(PlcSourceTools).GetMethod(nameof(PlcSourceTools.ApplyPlcSclAppend))!),
+            McpServerTool.Create(typeof(PlcCompileTool).GetMethod(nameof(PlcCompileTool.CompilePlcSoftware))!),
             excelExport
         };
         foreach (var name in new[] { "ListPortalProcessProjects", "AttachToOpenProject", "SaveProject", "GetExport",
-            "GetCrossReferences", "DescribeBlockLogic" })
+            "GetCrossReferences", "DescribeBlockLogic", "GetPlcTags" })
             tools.Add(McpServerTool.Create(typeof(Core).GetMethod(name)!));
 
         var wrappedTools = Core.WrapTools(tools);

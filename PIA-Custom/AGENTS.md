@@ -13,3 +13,14 @@ Checke den Prompt in Git ein. Wenn sich das Verhalten oder die benötigten Funkt
 Führe unter **Benötigte Funktionen** die konkreten Aufrufe auf, von denen die Fähigkeit abhängt. Verwende für Upstream-MCP-Tools ihren registrierten Toolnamen und für eigene Wrapper oder Hilfsfunktionen den Funktionsnamen und den relativen Quellpfad. Gib zu jedem Eintrag an, wofür die Fähigkeit ihn braucht. Bei bedingten Aufrufen gehört die Auslösebedingung dazu.
 
 Kennzeichne geplante Funktionen als `geplant`, bis sie implementiert sind. Prüfe vorhandene MCP-Toolnamen über `tools/list` im Vollprofil oder über `FindTools`. Kommt eine Fähigkeit ohne weitere Funktionsaufrufe aus, vermerke das ausdrücklich.
+
+## 3. Vorschauen für TIA-Programmänderungen
+
+- Schlage für jedes neue Netzwerk einen aussagekräftigen Titel und für jede
+  neu angelegte Variable oder Schnittstellendeklaration einen Kommentar vor.
+  Zeige die Texte in der Änderungsvorschau, übernimm sie mit der freigegebenen
+  Logik und prüfe sie beim Rücklesen.
+- Liste unbeschaltete Eingänge und Eingänge mit bewusst leeren Werten in
+  der Vorschau einzeln mit Netzwerk, Baustein und Pin auf. Kennzeichne,
+  dass sie manuell geprüft und bei Bedarf nachbeschaltet werden müssen.
+  Weise darauf hin, wenn die Schnittstelle nicht vollständig geprüft wurde.

@@ -8,7 +8,12 @@ namespace Pia.Custom;
 
 internal static class ProjectSession
 {
-    internal static object WithSavedProject(bool savedStateConfirmed, Func<ProjectBase, object> read)
+    internal static object WithSavedProject(bool savedStateConfirmed, Func<ProjectBase, object> read) =>
+        WithProject(true, savedStateConfirmed, read);
+
+    internal static object WithOpenProject(Func<ProjectBase, object> read) => WithProject(false, false, read);
+
+    private static object WithProject(bool requireSaved, bool savedStateConfirmed, Func<ProjectBase, object> read)
     {
         var project = Core.Portal.CurrentProject;
         if (project == null)
@@ -22,7 +27,7 @@ internal static class ProjectSession
             project = Core.Portal.CurrentProject;
         }
         if (project == null) return new { status = "openProjectRequired" };
-        var state = CheckSaved(project, savedStateConfirmed);
+        var state = requireSaved ? CheckSaved(project, savedStateConfirmed) : null;
         if (state != null) return state;
         object result;
         try
@@ -32,12 +37,14 @@ internal static class ProjectSession
         catch (Exception ex)
         {
             return new { status = "incomplete", complete = false, project = project.Name,
-                reason = "Cannot read the project library or device tree (" + ex.GetType().Name + ")." };
+                reason = requireSaved
+                    ? "Cannot read the project library or device tree (" + ex.GetType().Name + ")."
+                    : "Cannot read the selected project object (" + ex.GetType().Name + ")." };
         }
-        return CheckSaved(project, savedStateConfirmed) ?? result;
+        return requireSaved ? CheckSaved(project, savedStateConfirmed) ?? result : result;
     }
 
-    private static object? CheckSaved(ProjectBase project, bool confirmed)
+    internal static object? CheckSaved(ProjectBase project, bool confirmed)
     {
         try
         {

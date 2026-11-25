@@ -7,6 +7,14 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Server/UsageRules.cs" Link="UsageRules.cs" />
+    <Compile Include="../Server/PlcInterfaceReader.cs" Link="PlcInterfaceReader.cs" />
+    <Compile Include="../Server/PlcCallReader.cs" Link="PlcCallReader.cs" />
+    <Compile Include="../Server/PlcFbdSource.cs" Link="PlcFbdSource.cs" />
+    <Compile Include="../Server/PlcFbdEno.cs" Link="PlcFbdEno.cs" />
+    <Compile Include="../Server/PlcFbdInputReview.cs" Link="PlcFbdInputReview.cs" />
+    <Compile Include="../Server/PlcFbdResources.cs" Link="PlcFbdResources.cs" />
+    <Reference Include="YamlDotNet" HintPath="../../runtime/v21/YamlDotNet.dll" />
+    <Compile Include="../Server/PlcSourceWorkspace.cs" Link="PlcSourceWorkspace.cs" />
     <Compile Include="../../tools/tiaportal-mcp/src/TiaMcpServer/ModelContextProtocol/CrossReferenceEntry.cs" Link="CrossReferenceEntry.cs" />
   </ItemGroup>
 </Project>

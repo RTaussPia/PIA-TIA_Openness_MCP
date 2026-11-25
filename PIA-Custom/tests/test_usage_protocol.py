@@ -69,7 +69,9 @@ class UsageProtocolTests(unittest.TestCase):
         self.assertEqual(set(export["inputSchema"]["required"]), {"title", "columns", "rows"})
         self.assertFalse(export["annotations"]["readOnlyHint"])
         self.assertFalse(export["annotations"]["idempotentHint"])
-        for name in ("GetProjectStructure", "GetProjectKnowledge", "GetCrossReferences", "DescribeBlockLogic"):
+        for name in ("GetProjectStructure", "GetProjectKnowledge", "GetCrossReferences", "DescribeBlockLogic",
+                     "GetPlcTags", "GetPlcBlockInterface", "GetPlcCallConnections", "GetPlcBlockSource", "PlanPlcFbdAppend",
+                     "PlanPlcSclAppend"):
             self.assertTrue(tools[name]["annotations"]["readOnlyHint"], name)
         self.assertNotIn("CheckProjectLibraryUsage", tools)
         self.assertNotIn("CheckGlobalLibraryUsage", tools)
@@ -87,6 +89,64 @@ class UsageProtocolTests(unittest.TestCase):
         self.assertEqual(self.call("GetProjectStructure", {"maxDepth": 33})["status"], "invalidDepth")
         self.assertEqual(self.call("GetProjectStructure", {"folder": "Area"})["status"], "softwarePathRequired")
         self.assertEqual(self.call("GetProjectStructure", {"softwarePath": "PLC", "folder": "../Area"})["status"], "invalidFolder")
+        block = {"softwarePath": "PLC", "blockPath": "Stations/FB_Test"}
+        self.assertEqual(self.call("GetPlcBlockInterface", {**block, "memberPath": "Data..Step"})["status"], "invalidMemberPath")
+        self.assertEqual(self.call("GetPlcCallConnections", {**block, "network": -1})["status"], "invalidNetwork")
+        self.assertEqual(self.call("GetPlcCallConnections", {**block, "limit": 101})["status"], "invalidPage")
+        self.assertEqual(self.call("GetPlcBlockSource", {**block, "offset": -1})["status"], "invalidPage")
+        plan_schema = tools["PlanPlcFbdAppend"]["inputSchema"]["properties"]["changes"]["items"]
+        self.assertEqual(set(plan_schema["required"]), {"blockPath", "networks"})
+        self.assertFalse(plan_schema["additionalProperties"])
+        self.assertIn("networkTitles", plan_schema["properties"])
+        local_schema = plan_schema["properties"]["statics"]["items"]
+        self.assertEqual(set(local_schema["required"]), {"name", "dataType"})
+        self.assertIn("comment", local_schema["properties"])
+        self.assertTrue(tools["ApplyPlcFbdAppend"]["annotations"]["destructiveHint"])
+        self.assertFalse(tools["ApplyPlcFbdAppend"]["annotations"]["readOnlyHint"])
+        self.assertEqual(set(tools["ApplyPlcFbdAppend"]["inputSchema"]["required"]), {"planId", "approved"})
+        self.assertEqual(self.call("ApplyPlcFbdAppend", {"planId": "invalid", "approved": False})["status"], "approvalRequired")
+        self.assertEqual(self.call("ApplyPlcFbdAppend", {"planId": "invalid", "approved": True})["status"], "planNotFound")
+        self.assertTrue(tools["ApplyPlcSclAppend"]["annotations"]["destructiveHint"])
+        self.assertEqual(self.call("ApplyPlcSclAppend", {"planId": "invalid", "approved": False})["status"], "approvalRequired")
+        self.assertEqual(self.call("ApplyPlcSclAppend", {"planId": "invalid", "approved": True})["status"], "planNotFound")
+        for changes in ([], [{"blockPath": block["blockPath"], "networks": ["END_FUNCTION_BLOCK"]}],
+                        [{"blockPath": block["blockPath"], "networks": ["RUNG #In Coil(#Out) END_RUNG"],
+                          "temps": [{"name": "Out; END_VAR", "dataType": "Bool"}]}]):
+            result = self.call("PlanPlcFbdAppend", {"softwarePath": block["softwarePath"], "changes": changes})
+            self.assertEqual(result["status"], "invalidChange")
+
+    def test_fbd_documentation_is_optional_and_validated(self):
+        basic = {"blockPath": "Station/FB_Station", "networks": ["RUNG #In Coil(#Out) END_RUNG"]}
+        documented = {**basic, "networkTitles": ["Capture sensor data"],
+                      "temps": [{"name": "Payload", "dataType": "WString", "comment": "Sensor payload"}]}
+        for change in (basic, documented):
+            self.assertEqual(self.call("PlanPlcFbdAppend", {"softwarePath": "", "changes": [change]})["status"],
+                             "invalidSoftwarePath")
+        for change in ({**basic, "networkTitles": []},
+                       {**basic, "networkTitles": [""]},
+                       {**documented, "temps": [{"name": "Payload", "dataType": "WString", "comment": "line 1\nline 2"}]}):
+            self.assertEqual(self.call("PlanPlcFbdAppend", {"softwarePath": "", "changes": [change]})["status"],
+                             "invalidChange")
+
+    def test_scl_append_accepts_source_statements_and_rejects_wrapped_or_fbd_source(self):
+        change = {"blockPath": "Station/FB_Station",
+                  "network": "// Send only after a value change.\nIF #Current <> #Previous THEN #Previous := #Current; END_IF;",
+                  "networkTitle": "Observe step changes",
+                  "statics": [{"name": "Previous", "dataType": "Int", "comment": "Last observed step number"}]}
+        self.assertEqual(self.call("PlanPlcSclAppend", {"softwarePath": "", "change": change})["status"],
+                         "invalidSoftwarePath")
+        for source in ("NETWORK #Value := 1; END_NETWORK", "RUNG #In Coil(#Out) END_RUNG", "#Value := Call(#Input;"):
+            self.assertEqual(self.call("PlanPlcSclAppend", {"softwarePath": "", "change": {**change, "network": source}})["status"],
+                             "invalidChange")
+
+    def test_compile_plc_software_requires_a_bounded_software_name(self):
+        tools = {tool["name"]: tool for tool in self.request("tools/list", {})["tools"]}
+        compile_tool = tools["CompilePlcSoftware"]
+        self.assertEqual(compile_tool["inputSchema"]["required"], ["softwarePath"])
+        self.assertFalse(compile_tool["annotations"]["readOnlyHint"])
+        for software_path in (" ", "x" * 513, "PLC\nName"):
+            self.assertEqual(self.call("CompilePlcSoftware", {"softwarePath": software_path})["status"],
+                             "invalidSoftwarePath")
 
     def test_bundled_project_knowledge(self):
         custom = Path(__file__).resolve().parents[1]
