@@ -9,7 +9,7 @@ public static class ProjectKnowledgeTool
 {
     [McpServerTool(Name = "GetProjectKnowledge"), Description("Read one bundled PIA Markdown document for interpreting TIA project results.")]
     public static object GetProjectKnowledge(
-        [Description("Document ID: libraryUsage, projectConventions, iasLibrary, or excelExport.")] string document)
+        [Description("Document ID: libraryUsage, projectConventions, iasLibrary, excelExport, or temporaryPlcBlocks.")] string document)
     {
         string relativePath;
         switch (document)
@@ -26,8 +26,11 @@ public static class ProjectKnowledgeTool
             case "excelExport":
                 relativePath = Path.Combine("capabilities", "ExportExcel.md");
                 break;
+            case "temporaryPlcBlocks":
+                relativePath = Path.Combine("knowledge", "TemporaryPlcBlockRules.md");
+                break;
             default:
-                return new { status = "unknownDocument", candidates = new[] { "libraryUsage", "projectConventions", "iasLibrary", "excelExport" } };
+                return new { status = "unknownDocument", candidates = new[] { "libraryUsage", "projectConventions", "iasLibrary", "excelExport", "temporaryPlcBlocks" } };
         }
 
         try

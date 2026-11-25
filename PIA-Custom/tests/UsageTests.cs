@@ -17,6 +17,7 @@ internal static class UsageTests
     public static void Main()
     {
         PlcInspectionReaderTests.Run();
+        PlcGraphTests.Run();
         PlcFbdSourceTests.Run();
         var sourceType = Guid.NewGuid();
         var sharedVersion = Guid.NewGuid();

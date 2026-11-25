@@ -24,3 +24,15 @@ Kennzeichne geplante Funktionen als `geplant`, bis sie implementiert sind. Prüf
   der Vorschau einzeln mit Netzwerk, Baustein und Pin auf. Kennzeichne,
   dass sie manuell geprüft und bei Bedarf nachbeschaltet werden müssen.
   Weise darauf hin, wenn die Schnittstelle nicht vollständig geprüft wurde.
+- Übernimm bei bestehenden TIA-Texten die Sprachzuordnungen aus dem Export.
+  Verwende für neue Netzwerktitel und Kommentare die Sprache der relevanten
+  vorhandenen Texte, wenn sie eindeutig ist. Verwende sonst die aktive
+  Bearbeitungssprache des Projekts. Zeige die gewählte Sprache in der Vorschau
+  und prüfe sie beim Rücklesen.
+
+## 4. Temporäre PLC-Bausteine
+
+Wenn eine PIA-Fähigkeit temporäre Bausteine im TIA-Projekt anlegt, gelten die
+[gemeinsamen Regeln für temporäre PLC-Bausteine](knowledge/TemporaryPlcBlockRules.md).
+Setze Ordner, Sperr-FB und Bereinigung für diese Fähigkeiten über denselben
+MCP-Mechanismus um.

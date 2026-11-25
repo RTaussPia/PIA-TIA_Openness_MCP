@@ -148,6 +148,39 @@ class UsageProtocolTests(unittest.TestCase):
             self.assertEqual(self.call("CompilePlcSoftware", {"softwarePath": software_path})["status"],
                              "invalidSoftwarePath")
 
+    def test_graph_tools_require_bounded_pages_and_exact_approval(self):
+        tools = {tool["name"]: tool for tool in self.request("tools/list", {})["tools"]}
+        self.assertTrue(tools["GetPlcGraph"]["annotations"]["readOnlyHint"])
+        self.assertTrue(tools["PlanPlcGraphStepFlag"]["annotations"]["readOnlyHint"])
+        self.assertTrue(tools["ApplyPlcGraphStepFlag"]["annotations"]["destructiveHint"])
+        self.assertTrue(tools["PlanPlcGraphStepFlagActions"]["annotations"]["readOnlyHint"])
+        self.assertTrue(tools["ApplyPlcGraphStepFlagActions"]["annotations"]["destructiveHint"])
+        self.assertNotIn("title", tools["PlanPlcGraphStepFlagActions"]["inputSchema"]["properties"])
+        action_schema = tools["PlanPlcGraphStepFlagActions"]["inputSchema"]
+        for parameter in ("dataBlockPath", "dataMemberParent"):
+            self.assertIn(parameter, action_schema["properties"])
+            self.assertNotIn(parameter, action_schema["required"])
+        plan_schema = tools["PlanPlcGraphStepFlag"]["inputSchema"]
+        self.assertIn("branchSteps", plan_schema["properties"])
+        self.assertNotIn("branchSteps", plan_schema["required"])
+        target = {"softwarePath": "PLC", "blockPath": "Station/Sequence"}
+        self.assertEqual(self.call("GetPlcGraph", {**target, "limit": 51})["status"], "invalidPage")
+        self.assertEqual(self.call("GetPlcGraph", {**target, "section": "flow", "number": 1})["status"], "invalidSection")
+        change = {**target, "sequence": 1, "firstStep": 1, "lastStep": 2, "flag": "Bad.Flag",
+                  "title": "Expose step range", "comment": "True while the selected steps are active."}
+        self.assertEqual(self.call("PlanPlcGraphStepFlag", change)["status"], "invalidChange")
+        self.assertEqual(self.call("PlanPlcGraphStepFlag", {**change, "flag": "TestActive", "branchSteps": []})["status"],
+                         "invalidChange")
+        action_change = {k: v for k, v in change.items() if k != "title"}
+        self.assertEqual(self.call("PlanPlcGraphStepFlagActions", {**action_change, "flag": "TestActive",
+                         "dataMemberParent": "Logistics"})["status"], "invalidDataBlockTarget")
+        self.assertEqual(self.call("ApplyPlcGraphStepFlag", {"planId": "invalid", "approved": False})["status"], "approvalRequired")
+        self.assertEqual(self.call("ApplyPlcGraphStepFlag", {"planId": "invalid", "approved": True})["status"], "planNotFound")
+        self.assertEqual(self.call("ApplyPlcGraphStepFlagActions", {"planId": "invalid", "approved": False})["status"],
+                         "approvalRequired")
+        self.assertEqual(self.call("ApplyPlcGraphStepFlagActions", {"planId": "invalid", "approved": True})["status"],
+                         "planNotFound")
+
     def test_bundled_project_knowledge(self):
         custom = Path(__file__).resolve().parents[1]
         documents = {
@@ -155,6 +188,7 @@ class UsageProtocolTests(unittest.TestCase):
             "projectConventions": "knowledge/TiaPortalProjectConventions.md",
             "iasLibrary": "knowledge/PiaIndustrialAppSuiteLibrary.md",
             "excelExport": "capabilities/ExportExcel.md",
+            "temporaryPlcBlocks": "knowledge/TemporaryPlcBlockRules.md",
         }
         for document, path in documents.items():
             with self.subTest(document=document):

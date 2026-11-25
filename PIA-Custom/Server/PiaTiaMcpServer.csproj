@@ -16,6 +16,8 @@
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../knowledge/PiaIndustrialAppSuiteLibrary.md" Link="knowledge/PiaIndustrialAppSuiteLibrary.md"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../knowledge/TemporaryPlcBlockRules.md" Link="knowledge/TemporaryPlcBlockRules.md"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../capabilities/CheckLibraryUsage.md" Link="capabilities/CheckLibraryUsage.md"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../capabilities/ExportExcel.md" Link="capabilities/ExportExcel.md"

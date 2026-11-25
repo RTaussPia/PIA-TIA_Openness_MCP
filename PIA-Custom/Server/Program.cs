@@ -34,6 +34,11 @@ internal static class Program
             McpServerTool.Create(typeof(PlcSourceTools).GetMethod(nameof(PlcSourceTools.PlanPlcSclAppend))!),
             McpServerTool.Create(typeof(PlcSourceTools).GetMethod(nameof(PlcSourceTools.ApplyPlcSclAppend))!),
             McpServerTool.Create(typeof(PlcCompileTool).GetMethod(nameof(PlcCompileTool.CompilePlcSoftware))!),
+            McpServerTool.Create(typeof(PlcGraphTools).GetMethod(nameof(PlcGraphTools.GetPlcGraph))!),
+            McpServerTool.Create(typeof(PlcGraphTools).GetMethod(nameof(PlcGraphTools.PlanPlcGraphStepFlag))!),
+            McpServerTool.Create(typeof(PlcGraphTools).GetMethod(nameof(PlcGraphTools.ApplyPlcGraphStepFlag))!),
+            McpServerTool.Create(typeof(PlcGraphTools).GetMethod(nameof(PlcGraphTools.PlanPlcGraphStepFlagActions))!),
+            McpServerTool.Create(typeof(PlcGraphTools).GetMethod(nameof(PlcGraphTools.ApplyPlcGraphStepFlagActions))!),
             excelExport
         };
         foreach (var name in new[] { "ListPortalProcessProjects", "AttachToOpenProject", "SaveProject", "GetExport",
