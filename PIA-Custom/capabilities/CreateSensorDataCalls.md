@@ -6,11 +6,19 @@ Bereite im geöffneten TIA-Portal-Projekt einen Aufruf vor, der einen Sensorwert
 
 1. **Ziel bestimmen.** Ermittle die PLC, die Station, den Zielbaustein und die gewünschte Einfügestelle. Prüfe die Programmiersprache an der Einfügestelle und verwende dieselbe Sprache, sofern der Benutzer keine andere vorgibt. Frage nach, wenn der Einbauort oder die Sprache unklar ist.
 2. **Sensorwert ermitteln.** Suche den angegebenen Wert in PLC-Variablentabellen, FB- und FC-Schnittstellen sowie Datenbausteinen. Grenze die Suche anhand der Anlage, der Station und der genannten Baugruppe ein. Zeige bei mehreren Treffern die vollständigen Symbolpfade mit Datentyp zur Auswahl. Frage bei fehlendem Treffer nach einer genaueren Bezeichnung.
-3. **Auslöser und Beschaltung klären.** Prüfe die Schnittstellen der im Projekt eingesetzten Sensorbausteine. Übernimm bereits genannte Angaben und frage die für die Beschaltung noch fehlenden Informationen ab. Dazu gehören je nach Schnittstelle der zu sendende Wert, der Auslöser (Intervall oder Ereignis), die Grenzwerte, der Bauteiltyp, die Einheit, der Datentyp und der Umgang mit relevanten Ausgängen.
+3. **Auslöser und Schnittstellen klären.** Prüfe die Schnittstellen der im Projekt eingesetzten Sensorbausteine. Kläre, welches Intervall oder Ereignis den Versand auslöst, soweit der Benutzer dies noch nicht angegeben hat.
 
    Kläre bei einem Wertwechsel, welcher Wert den Versand auslöst und ob beim ersten Aufruf bereits gesendet werden soll.
 
-4. **IAS-Beschaltung ermitteln.** Verbinde standardmäßig den Ausgang `Message` von `FC_MqttBuildSensor` direkt mit dem Eingang `Message` von `FC_MqttSendSensorValue`, sofern die geprüften Schnittstellen zusammenpassen und der Benutzer keine andere Beschaltung vorgibt. Ermittle `MachineName`, `ModuleName`, `StationName`, `RuntimeData` und `RuntimeBuffer` aus bestehenden IAS-Aufrufen. Beginne im Zielbaustein und folge dem Aufrufpfad zu den nächstgelegenen IAS-Aufrufen derselben Station. Nutze deren Beschaltung als Referenz. Frage den Benutzer bei fehlenden oder widersprüchlichen Referenzen nach den betroffenen Signalen.
+4. **IAS-Beschaltung ermitteln.** Übernimm bereits genannte Angaben und frage die für die Beschaltung noch fehlenden Informationen ab.
+
+   | Parameter | Beschaltungsregel |
+   | --- | --- |
+   | Sensorwert | Verwende den in Schritt 2 bestätigten Symbolpfad. Prüfe den Datentyp des Signals gegen die ausgelesene Schnittstelle. |
+   | Grenzwerte, Bauteiltyp, Einheit und Datentyp | Kläre die für die eingesetzte Schnittstelle benötigten Angaben, soweit sie noch offen sind. |
+   | `Message` | Verbinde den Ausgang von `FC_MqttBuildSensor` direkt mit dem gleichnamigen Eingang von `FC_MqttSendSensorValue`, sofern die Schnittstellen zusammenpassen und der Benutzer keine andere Beschaltung vorgibt. |
+   | `MachineName`, `ModuleName`, `StationName`, `RuntimeData`, `RuntimeBuffer` | Beginne im Zielbaustein und folge dem Aufrufpfad zu den nächstgelegenen IAS-Aufrufen derselben Station. Nutze deren Beschaltung als Referenz. Frage bei fehlenden oder widersprüchlichen Referenzen nach den betroffenen Signalen. |
+   | Relevante Ausgänge | Kläre, wie die relevanten Ausgänge verwendet werden sollen, soweit dazu Angaben fehlen. |
 5. **Änderung vorschauen und freigeben lassen.** Zeige vor jeder Projektänderung die PLC, den Zielbaustein, die Einfügestelle, die Programmiersprache, den vollständigen Symbolpfad, den Auslöser, die vorgesehenen Aufrufe und die Beschaltung. Zeige bei verfügbarer Vorschaufunktion den geplanten Code oder Netzwerkentwurf. Warte, bis alle Rückfragen geklärt sind und der Benutzer die aktuelle Fassung ausdrücklich freigegeben hat. Zeige bei Korrekturen die aktualisierte Fassung erneut zur Freigabe.
 
    Zeige in der Vorschau aussagekräftige Titel für neue Netzwerke und Kommentare für neu angelegte Variablen und Schnittstellendeklarationen. Liste unbeschaltete Eingänge und Eingänge mit bewusst leeren Werten einzeln mit Netzwerk, Baustein und Pin auf und kennzeichne sie zur manuellen Prüfung und gegebenenfalls Nachbeschaltung.
