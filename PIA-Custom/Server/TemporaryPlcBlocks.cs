@@ -98,7 +98,16 @@ internal sealed class TemporaryPlcBlocks
         return cleanupFailure ?? failure;
     }
 
-    internal PlcBlock Import(FileInfo file, string blockName)
+    internal PlcBlock Import(FileInfo file, string blockName) =>
+        ImportOwnedCopy(blockName, () => group.Blocks.Import(file, ImportOptions.None).SingleOrDefault());
+
+    internal PlcBlock ImportDocuments(PlcSourceWorkspace workspace, string blockName) => ImportOwnedCopy(blockName, () =>
+    {
+        var result = group.Blocks.ImportFromDocuments(workspace.Directory, blockName, ImportDocumentOptions.None);
+        return result.State == DocumentResultState.Success ? result.ImportedPlcBlocks.SingleOrDefault() : null;
+    });
+
+    private PlcBlock ImportOwnedCopy(string blockName, Func<PlcBlock?> import)
     {
         var currentGuard = group.Blocks.Find(GuardName);
         if (!Equals(currentGuard, guard) || guard.ModifiedDate != guardModifiedDate)
@@ -107,12 +116,12 @@ internal sealed class TemporaryPlcBlocks
             throw new InvalidOperationException("The temporary block must have a new name.");
 
         using var transaction = access.Transaction(project, "Import temporary PLC block copy");
-        var imported = group.Blocks.Import(file, ImportOptions.None);
-        if (imported.Count != 1 || !Equals(group.Blocks.Find(blockName), imported[0]) || !transaction.CanCommit)
+        var imported = import();
+        if (imported == null || !Equals(group.Blocks.Find(blockName), imported) || !transaction.CanCommit)
             throw new InvalidOperationException("The temporary block import did not preserve the requested identity.");
-        ownedCopies.Add(imported[0]);
+        ownedCopies.Add(imported);
         transaction.CommitOnDispose();
-        return imported[0];
+        return imported;
     }
 
     private static bool HasGuardError(IEnumerable<CompilerResultMessage> messages, bool insideGuard = false)

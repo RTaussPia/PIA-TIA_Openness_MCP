@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Xml.Linq;
 using Pia.Custom;
 
 internal static class PlcFbdSourceTests
@@ -29,6 +30,19 @@ internal static class PlcFbdSourceTests
         Require(!PlcFbdSource.ValidNetworkBody("RUNG #Signal Coil(#Out) END_RUNG END_NETWORK"), "Reject network delimiters inside fragments.");
         Require(!PlcFbdSource.ValidNetworkBody("RUNG #Signal Coil(#Out)"), "Reject incomplete rungs.");
         Require(!PlcFbdSource.ValidLocal("Injected; END_VAR", "Int"), "Reject an invalid declaration name.");
+        Require(PlcFbdSource.FormatBlockType("", "Cylinder") == "_.Cylinder" &&
+            PlcFbdSource.FormatBlockType("_", "Cylinder") == "_.Cylinder", "Render a resolved root function block for import.");
+        Require(PlcFbdSource.FormatBlockType("Station.Motion", "Cylinder") == "Station.Motion.Cylinder",
+            "Preserve the resolved function block namespace.");
+        Require(PlcFbdSource.FormatBlockType("Station..Motion", "Cylinder") == null &&
+            PlcFbdSource.FormatBlockType("Station", "Cylinder; END_VAR") == null,
+            "Reject malformed generated type references.");
+        Require(!PlcFbdSource.Equivalent("VAR Instance : _.Cylinder;", "VAR Instance : Station.Cylinder;"),
+            "A different function block namespace is still a readback mismatch.");
+        string numberedBlock = Original.Replace("{ S7_PreferredLanguage", "{ S7_BlockNumber := \"9513\"; S7_PreferredLanguage");
+        Require(PlcFbdSource.Equivalent(PlcFbdSource.CopyBlockWithAutomaticNumber(numberedBlock, "PiaTempFbd_Verification"),
+            Original.Replace("FUNCTION_BLOCK \"TestBlock\"", "FUNCTION_BLOCK \"PiaTempFbd_Verification\"")),
+            "Change only the identity of a guarded temporary copy.");
 
         var result = PlcFbdSource.Append(Original, new[] { Body }, new[] { ("Timer", "IEC_TIMER") }, new[] { ("Message", "WString[254]") });
         Require(result.ExistingNetworks == 1, "Count complete networks and ignore comment text.");
@@ -42,6 +56,12 @@ internal static class PlcFbdSourceTests
             result.Source.LastIndexOf("END_FUNCTION_BLOCK", StringComparison.Ordinal), "Append before the block terminator.");
         Require(PlcFbdSource.Equivalent(Body, Body.Replace("\n    ", "\r\n        ")), "Normalize spacing between tokens.");
         Require(!PlcFbdSource.Equivalent(Body, Body.Replace("WSTRING#''", "WSTRING#' '")), "Spaces inside literals remain significant.");
+        Require(PlcFbdSource.ReadbackDifference("VAR\n    Instance : \"Cylinder\";", "VAR\n    Instance : _.Cylinder;") ==
+            "SIMATIC SD differs at planned line 2 and readback line 2: expected a double-quoted token, read `_`.",
+            "Identify the first source difference without exposing quoted values.");
+        Require(PlcFbdSource.ReadbackDifference("A", "A\nB") == "Unexpected SIMATIC SD content begins at readback line 2.",
+            "Identify extra content after the expected source ends.");
+        CheckStaticAttributes();
         var converter = "RUNG #Due { S7_Templates := \"[src_type := Int, dest_type := WString]\" } " +
             "S_CONV(in := \"DB\".Value, out => #Text) \"Send\"(Buffer := \"DB\".THIS) END_RUNG";
         string converterBlock = PlcFbdSource.Append(Original, new[] { converter }, NoLocals, NoLocals).Source;
@@ -107,6 +127,74 @@ internal static class PlcFbdSourceTests
             return;
         }
         throw new InvalidOperationException("Reject a duplicate local across sections regardless of case.");
+    }
+
+    private static void CheckStaticAttributes()
+    {
+        string source = Original.Replace("Existing : Int;", "Existing : Int;\n" +
+            "    { S7_Access := \"ReadOnly := External\"; S7_MLC := \"MLC_Old\"; " +
+            "S7_Setpoint := \"True\"; S7_Visibility := \"Unlisted := External\" }\n" +
+            "    Last : Struct\n        Nested : Bool;\n    END_STRUCT;")
+            .Replace("{ S7_Language :=", "VAR RETAIN\n    Retained : Bool;\nEND_VAR\n{ S7_Language :=");
+        var predecessor = PlcFbdSource.StaticPredecessor(source);
+        Require(predecessor?.Name == "Last", "Identify the predecessor in the actual non-retentive section.");
+        Require(predecessor.GetValueOrDefault().Attributes.SequenceEqual(new[]
+        {
+            ("S7_Access", "\"ReadOnly := External\""),
+            ("S7_Setpoint", "\"True\""),
+            ("S7_Visibility", "\"Unlisted := External\"")
+        }), "Copy only the selected static attributes, leaving the old comment at its declaration.");
+        string inherited = PlcFbdSource.Append(source, new[] { Body }, new[] { ("Added", "Bool") }, NoLocals,
+            commentIds: new System.Collections.Generic.Dictionary<string, string> { ["Added"] = "MLC_New" },
+            staticAttributes: predecessor.GetValueOrDefault().Attributes).Source;
+        Require(inherited.Contains("{ S7_Access := \"ReadOnly := External\"; S7_MLC := \"MLC_New\"; " +
+            "S7_Setpoint := \"True\"; S7_Visibility := \"Unlisted := External\" }\r\n    Added : Bool;"),
+            "Emit the inherited access, visibility and setpoint along with the new comment.");
+        string ignored = PlcFbdSource.ExcludeVerifiedStaticAttributes(inherited, new[] { "Added" });
+        Require(ignored.Contains("{ S7_MLC := \"MLC_New\" }\r\n    Added : Bool;") &&
+            ignored.Contains("S7_MLC := \"MLC_Old\"; S7_Setpoint := \"True\";"),
+            "Allow normalization of verified fields only on the new variable, preserving both comments and the predecessor's fields.");
+        Require(!PlcFbdSource.Equivalent(ignored, ignored.Replace("Added : Bool;", "Added : Int;")),
+            "Keep verifying the static type even after checking the four attributes separately.");
+        string additionalSelector = inherited.Replace("S7_Visibility := \"Unlisted := External\" }\r\n    Added",
+            "S7_Visibility := \"Unlisted := External, Hidden := Other\" }\r\n    Added");
+        Require(PlcFbdSource.ExcludeVerifiedStaticAttributes(additionalSelector, new[] { "Added" }).Contains("Hidden := Other"),
+            "Keep selectors outside the four verified attributes in the source comparison.");
+        const string staticSection = "VAR\n    Existing : Int;\nEND_VAR\n";
+        string retainedOnly = Original.Replace(staticSection, "VAR RETAIN\n    Retained : Bool;\nEND_VAR\n");
+        Require(PlcFbdSource.StaticPredecessor(retainedOnly)?.Name == "Retained",
+            "Use the adjacent static declaration when the new non-retained section follows a retained section.");
+        string withoutStatic = Original.Replace(staticSection, "");
+        Require(PlcFbdSource.StaticPredecessor(withoutStatic) == null, "Use the default policy when the static interface has no predecessor.");
+        var disabled = PlcStaticAttributes.Disabled;
+        Require(disabled.Values == (false, false, false, false), "Use four disabled flags when there is no predecessor.");
+        string defaults = PlcFbdSource.Append(withoutStatic, new[] { Body }, new[] { ("Added", "Bool") }, NoLocals,
+            staticAttributes: disabled.SourceAttributes).Source;
+        Require(defaults.Contains("S7_Access := \"ReadOnly := External\"; S7_Setpoint := \"False\"; " +
+            "S7_Visibility := \"Hidden := External\" }\r\n    Added : Bool;"), "Generate the disabled settings explicitly.");
+        Require(!PlcFbdSource.ExcludeVerifiedStaticAttributes(defaults, new[] { "Added" }).Contains("S7_Visibility"),
+            "Remove the pragma when it contains only separately verified attributes.");
+        var exportedSyntax = PlcFbdSource.ReadStaticAttributeSyntax(defaults, new[] { "Added", "Missing" });
+        Require(exportedSyntax.Count == 1 && exportedSyntax["Added"].SequenceEqual(disabled.SourceAttributes),
+            "Read the actual attribute syntax and distinguish missing variables from omitted attributes.");
+        Require(PlcFbdSource.ReadStaticAttributeSyntax(defaults.Replace("S7_Setpoint := \"False\"; ", ""), new[] { "Added" })["Added"].Length == 2,
+            "Retain the absence of default-valued fields in the temporary export.");
+
+        var sections = XElement.Parse("""
+            <Sections xmlns="http://www.siemens.com/automation/Openness/SW/Interface/v5">
+              <Section Name="Static"><Member Name="Last" Datatype="Bool"><AttributeList>
+                <BooleanAttribute Name="ExternalAccessible">true</BooleanAttribute>
+                <BooleanAttribute Name="ExternalWritable">false</BooleanAttribute>
+                <BooleanAttribute Name="ExternalVisible">false</BooleanAttribute>
+                <BooleanAttribute Name="SetPoint">true</BooleanAttribute>
+              </AttributeList></Member></Section>
+            </Sections>
+            """);
+        Require(PlcStaticAttributes.ReadValues(sections, "Last") == (true, false, false, true),
+            "Read the four effective values from a SimaticML export with defaults.");
+        sections.Descendants().Single(element => (string?)element.Attribute("Name") == "ExternalWritable").Remove();
+        Require(PlcStaticAttributes.ReadValues(sections, "Last") == null,
+            "Flag incomplete reference attributes instead of guessing their effective values.");
     }
 
     private static void Require(bool condition, string message)

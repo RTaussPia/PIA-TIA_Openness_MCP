@@ -29,6 +29,31 @@ Kennzeichne geplante Funktionen als `geplant`, bis sie implementiert sind. Prüf
   vorhandenen Texte, wenn sie eindeutig ist. Verwende sonst die aktive
   Bearbeitungssprache des Projekts. Zeige die gewählte Sprache in der Vorschau
   und prüfe sie beim Rücklesen.
+- Zeige Bausteintypen in der Vorschau wie in der TIA-Bausteinschnittstelle.
+  Erzeuge die Schreibweise für den SIMATIC-SD-Import anhand des eindeutig
+  aufgelösten Bausteintyps. Akzeptiere beim Rücklesen abweichende
+  Schreibweisen nur bei nachgewiesener Typgleichheit. Melde weitere
+  Abweichungen mit ihrer Fundstelle und brich die Übernahme ab.
+- Prüfe vor dem Anlegen von Variablen in Bausteinschnittstellen,
+  Datenbausteinen oder PLC-Variablentabellen, ob es für vergleichbare
+  Variablen ein Namensschema gibt. Prüfe zuerst ähnliche Variablen in
+  derselben Station und bei Bedarf gleichartige Bausteinaufrufe in
+  anderen Stationen. Übernimm ein eindeutig belegtes Schema einschließlich
+  Präfixen und Suffixen. Zeige den vorgeschlagenen Namen und die Referenz
+  in der Änderungsvorschau.
+- Frage bei widersprüchlichen Schemata, welches Schema gelten soll und
+  ob es im gesamten TIA-Projekt für diese Art von Variablen gelten soll.
+  Bei bestätigter projektweiter Gültigkeit zeige den vorgesehenen Pfad
+  und den genauen Wortlaut für eine lokale Markdown-Datei des Projekts.
+  Speichere die Regel dort nach ausdrücklicher Freigabe.
+- Übernimm beim Anlegen einer statischen Variable die Einstellungen für
+  Erreichbarkeit aus HMI / OPC UA / Web API, Schreibbarkeit aus HMI /
+  OPC UA / Web API, Sichtbarkeit im HMI Engineering und Einstellwert vom
+  direkt vorhergehenden Eintrag in derselben Schnittstelle.
+  Ohne vorhergehenden Eintrag setze alle vier Eigenschaften auf „Nein“.
+  Zeige die vier Werte und ihre Herkunft in der Vorschau und prüfe sie
+  nach dem Import durch Rücklesen. Halte bei unlesbaren Eigenschaften
+  des vorhergehenden Eintrags vor dem Import an.
 
 ## 4. Temporäre PLC-Bausteine
 

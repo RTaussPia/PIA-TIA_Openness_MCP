@@ -61,16 +61,18 @@ public static partial class PlcSourceTools
                 : Array.Empty<string>();
             foreach (var change in requested)
             {
-                object outcome = WithFbdBlock(project, softwarePath, change.BlockPath, block =>
+                object outcome = WithFbdBlock(project, softwarePath, change.BlockPath, (_, block) =>
                 {
                     using var documents = new PlcSourceWorkspace();
                     try
                     {
                         var exported = ReadSource(block, documents);
-                        var preview = PrepareSource(change, exported.Path, exported.Text, cultures, language);
+                        var staticAttributes = change.Statics.Length == 0 ? null : PlanStaticAttributes(block, exported.Text);
+                        var preview = PrepareSource(change, exported.Path, exported.Text, cultures, language,
+                            staticAttributes: staticAttributes);
                         var review = reviewer.Read(change, block, preview.ExistingNetworks);
                         return new FbdTarget(change, block.Number, Fingerprint(documents),
-                            preview.AddedNetworks, preview.ExistingNetworks, review);
+                            preview.AddedNetworks, preview.ExistingNetworks, review, staticAttributes);
                     }
                     catch (InvalidDataException)
                     {
@@ -100,11 +102,12 @@ public static partial class PlcSourceTools
                     blockPath = target.Change.BlockPath,
                     firstNetwork = target.ExistingNetworks + 1,
                     lastNetwork = target.ExistingNetworks + target.Change.Networks.Length,
-                    statics = target.Change.Statics.Select(local => DescribeLocal(local, target.Change.Comments)).ToArray(),
+                    statics = target.Change.Statics.Select((local, index) => DescribeStatic(local, target.Change.Comments,
+                        target.StaticAttributes!, index == 0 ? target.StaticAttributes!.Predecessor : target.Change.Statics[index - 1].Name)).ToArray(),
                     temps = target.Change.Temps.Select(local => DescribeLocal(local, target.Change.Comments)).ToArray(),
                     networkTitles = target.Change.NetworkTitles?.Select((title, index) =>
                         new { network = target.ExistingNetworks + index + 1, title }).ToArray(),
-                    inputReview = target.InputReview,
+                    inputReview = target.Review.InputReview,
                     source = target.AddedNetworks
                 }).ToArray()
             };
@@ -150,9 +153,28 @@ public static partial class PlcSourceTools
                 foreach (var target in plan.Targets)
                 {
                     object outcome = WithFbdBlock(project, plan.SoftwarePath, target.Change.BlockPath,
-                        block => StageImport(block, target, plan.Cultures, reviewer, language));
+                        (software, block) => StageImport(software, block, target, plan.Cultures, reviewer, language));
                     if (!(outcome is FbdImport import)) return outcome;
                     imports.Add(import);
+                }
+
+                var staticImports = imports.Where(import => import.NewStatics.Length != 0).ToArray();
+                if (staticImports.Length != 0)
+                {
+                    var failure = TemporaryPlcBlocks.Verify(staticImports[0].Software, exclusive, transactionProject,
+                        temporary => VerifyTemporaryStaticAttributes(temporary, staticImports));
+                    if (failure != null) return failure;
+                    foreach (var import in imports)
+                    {
+                        var original = import.Group.Blocks.Find(import.Name);
+                        using var snapshot = new PlcSourceWorkspace();
+                        if (original == null || original.Number != import.Number || !original.IsConsistent)
+                            return new { status = "stalePlan", blockPath = import.BlockPath };
+                        ReadSource(original, snapshot);
+                        if (Fingerprint(snapshot) != import.OriginalFingerprint)
+                            return new { status = "stalePlan", blockPath = import.BlockPath,
+                                reason = "The original block changed during temporary verification." };
+                    }
                 }
 
                 string? blockPath = null;
@@ -187,16 +209,16 @@ public static partial class PlcSourceTools
         });
     }
 
-    private static object WithFbdBlock(ProjectBase project, string softwarePath, string blockPath, Func<PlcBlock, object> action) =>
-        PlcInspectionTools.WithOpenBlock(project, softwarePath, blockPath, (_, block, path) =>
+    private static object WithFbdBlock(ProjectBase project, string softwarePath, string blockPath, Func<PlcSoftware, PlcBlock, object> action) =>
+        PlcInspectionTools.WithOpenBlock(project, softwarePath, blockPath, (software, block, path) =>
         {
             if (!(block is FB) || block.ProgrammingLanguage.ToString() != "FBD" || block.IsKnowHowProtected ||
                 !block.IsConsistent || !(block.Parent is PlcBlockGroup))
                 return new { status = "unsupportedBlock", blockPath = path };
-            return action(block);
+            return action(software, block);
         });
 
-    private static object StageImport(PlcBlock block, FbdTarget target, IReadOnlyList<string> cultures,
+    private static object StageImport(PlcSoftware software, PlcBlock block, FbdTarget target, IReadOnlyList<string> cultures,
         PlcFbdPlanReview reviewer, string language)
     {
         var documents = new PlcSourceWorkspace();
@@ -209,23 +231,48 @@ public static partial class PlcSourceTools
                 return new { status = "stalePlan", blockPath = target.Change.BlockPath };
             }
             var change = target.Change;
-            object currentReview = reviewer.Read(change, block, target.ExistingNetworks);
-            if (JsonSerializer.Serialize(currentReview) != JsonSerializer.Serialize(target.InputReview))
+            if (target.StaticAttributes != null)
+            {
+                PlcStaticAttributes current;
+                try
+                {
+                    current = PlanStaticAttributes(block, exported.Text);
+                }
+                catch (FormatException ex)
+                {
+                    documents.Dispose();
+                    return new { status = "stalePlan", blockPath = change.BlockPath, reason = ex.Message };
+                }
+                if (current.Values != target.StaticAttributes.Values)
+                {
+                    documents.Dispose();
+                    return new { status = "stalePlan", blockPath = change.BlockPath, reason = "The predecessor's static attributes changed after the preview." };
+                }
+            }
+            var currentReview = reviewer.Read(change, block, target.ExistingNetworks);
+            if (!target.Review.HasSameBindings(currentReview))
+            {
+                documents.Dispose();
+                return new { status = "stalePlan", blockPath = change.BlockPath, reason = "A resolved function block type changed after the preview." };
+            }
+            if (JsonSerializer.Serialize(currentReview.InputReview) != JsonSerializer.Serialize(target.Review.InputReview))
             {
                 documents.Dispose();
                 return new { status = "stalePlan", blockPath = change.BlockPath, reason = "The open input review changed after the preview." };
             }
             var existingEno = ReadConverterEno(block);
             string preservedSource = PlcFbdSource.PreserveConverterEno(exported.Text, existingEno);
-            var updated = PrepareSource(change, exported.Path, preservedSource, cultures, language);
+            var updated = PrepareSource(change, exported.Path, preservedSource, cultures, language,
+                currentReview.ImportStatics(change.Statics), target.StaticAttributes);
             var expectedEno = existingEno.Concat(change.Networks.Select(network =>
                 language == "FBD" ? PlcFbdSource.ExpectedNewConverterEno(network) : Array.Empty<bool>())).ToArray();
             File.WriteAllText(exported.Path, updated.Source, new UTF8Encoding(true, true));
             if (updated.TextResources != null)
                 File.WriteAllText(Path.ChangeExtension(exported.Path, ".s7res"), updated.TextResources.Write(), new UTF8Encoding(true, true));
-            return new FbdImport(change.BlockPath, block.Name, block.Number, (PlcBlockGroup)block.Parent, documents,
+            return new FbdImport(change.BlockPath, block.Name, block.Number, (PlcBlockGroup)block.Parent, software, documents,
                 updated.Source, Fingerprint(documents, resourcesOnly: true, excludeTextResources: updated.TextResources != null),
-                expectedEno, updated.TextResources);
+                expectedEno, updated.TextResources, target.StaticAttributes, change.Statics.Select(local => local.Name).ToArray(),
+                target.Fingerprint);
         }
         catch
         {
@@ -235,7 +282,8 @@ public static partial class PlcSourceTools
     }
 
     private static (string Source, string AddedNetworks, int ExistingNetworks, PlcFbdResources? TextResources)
-        PrepareSource(PlcFbdChange change, string sourcePath, string source, IReadOnlyList<string> cultures, string language)
+        PrepareSource(PlcFbdChange change, string sourcePath, string source, IReadOnlyList<string> cultures, string language,
+            IReadOnlyList<(string Name, string Type)>? importStatics = null, PlcStaticAttributes? staticAttributes = null)
     {
         PlcFbdResources? texts = null;
         string[]? titles = null;
@@ -247,7 +295,8 @@ public static partial class PlcSourceTools
             titles = change.NetworkTitles?.Select(title => texts.Add(title, cultures)).ToArray();
             comments = change.Comments.ToDictionary(item => item.Key, item => texts.Add(item.Value, cultures));
         }
-        var result = PlcFbdSource.Append(source, change.Networks, change.Statics, change.Temps, titles, comments, language);
+        var result = PlcFbdSource.Append(source, change.Networks, importStatics ?? change.Statics, change.Temps,
+            titles, comments, language, staticAttributes?.SourceAttributes);
         return (result.Source, result.AddedNetworks, result.ExistingNetworks, texts);
     }
 
@@ -263,6 +312,46 @@ public static partial class PlcSourceTools
         comments.TryGetValue(local.Name, out string? comment)
             ? new { name = local.Name, dataType = local.Type, comment }
             : new { name = local.Name, dataType = local.Type };
+
+    private static object DescribeStatic((string Name, string Type) local, IReadOnlyDictionary<string, string> comments,
+        PlcStaticAttributes attributes, string? predecessor) => new
+    {
+        name = local.Name,
+        dataType = local.Type,
+        comment = comments.TryGetValue(local.Name, out string? comment) ? comment : null,
+        attributes = new
+        {
+            externalAccessible = attributes.Values.ExternalAccessible,
+            externalWritable = attributes.Values.ExternalWritable,
+            externalVisible = attributes.Values.ExternalVisible,
+            setpoint = attributes.Values.Setpoint,
+            source = predecessor == null ? "default" : "predecessor",
+            predecessor
+        }
+    };
+
+    private static XElement? ReadStaticInterface(PlcBlock block)
+    {
+        var exported = PlcInspectionTools.ReadExport(file => block.Export(file, ExportOptions.WithDefaults), "SW.Blocks.");
+        return exported == null ? null : PlcInterfaceReader.InterfaceSections(exported);
+    }
+
+    private static PlcStaticAttributes PlanStaticAttributes(PlcBlock block, string source)
+    {
+        var predecessor = PlcFbdSource.StaticPredecessor(source);
+        if (predecessor == null) return PlcStaticAttributes.Disabled;
+        var entry = predecessor.Value;
+        try
+        {
+            var values = PlcStaticAttributes.ReadValues(ReadStaticInterface(block), entry.Name);
+            if (values.HasValue) return new PlcStaticAttributes(entry.Name, values.Value, entry.Attributes);
+        }
+        catch (EngineeringException)
+        {
+            throw new FormatException($"TIA Portal could not export the static attributes of '{entry.Name}'.");
+        }
+        throw new FormatException($"The four static attributes of '{entry.Name}' could not be read completely.");
+    }
 
     private static string[] ActiveCultures(ProjectBase project) =>
         project.LanguageSettings.ActiveLanguages.Select(language => language.Culture.Name)
@@ -282,14 +371,60 @@ public static partial class PlcSourceTools
         using var readback = new PlcSourceWorkspace();
         var source = ReadSource(block, readback);
         var actualTexts = import.TextResources == null ? null : ReadTextResources(source.Path);
-        if (!PlcFbdSource.Equivalent(import.Source, source.Text, import.TextResources, actualTexts) ||
-            Fingerprint(readback, resourcesOnly: true, excludeTextResources: actualTexts != null) != import.Resources ||
-            (actualTexts != null && !import.TextResources!.HasSameTexts(actualTexts)))
-            throw new FbdImportException("The re-exported source or resources did not match the plan.");
+        VerifyStaticAttributes(block, import, source.Text);
+        string? difference;
+        try
+        {
+            string planned = import.Source;
+            string actual = source.Text;
+            if (import.NewStatics.Length > 0)
+            {
+                planned = PlcFbdSource.ExcludeVerifiedStaticAttributes(planned, import.NewStatics);
+                actual = PlcFbdSource.ExcludeVerifiedStaticAttributes(actual, import.NewStatics);
+            }
+            difference = PlcFbdSource.ReadbackDifference(planned, actual, import.TextResources, actualTexts);
+        }
+        catch (FormatException ex)
+        {
+            throw new FbdImportException(ex.Message);
+        }
+        if (difference != null) throw new FbdImportException(difference);
+        if (Fingerprint(readback, resourcesOnly: true, excludeTextResources: actualTexts != null) != import.Resources)
+            throw new FbdImportException("An exported companion file differs from the approved export.");
+        if (actualTexts != null && !import.TextResources!.HasSameTexts(actualTexts))
+            throw new FbdImportException("The SIMATIC SD multilingual text collection differs from the approved export.");
         var actualEno = PlcFbdSource.ReadExportedConverterEno(source.Text);
         if (actualEno.Length != import.ConverterEno.Length ||
             !actualEno.Zip(import.ConverterEno, (actual, expected) => actual.SequenceEqual(expected)).All(equal => equal))
             throw new FbdImportException("The S_CONV ENO settings did not match the plan.");
+    }
+
+    private static void VerifyStaticAttributes(PlcBlock block, FbdImport import, string source)
+    {
+        var attributes = import.StaticAttributes;
+        if (attributes == null) return;
+        XElement? sections = null;
+        try { sections = ReadStaticInterface(block); }
+        catch (EngineeringException) { }
+
+        var names = attributes.Predecessor == null ? import.NewStatics : import.NewStatics.Concat(new[] { attributes.Predecessor });
+        if (sections == null)
+        {
+            // Match the original import's syntax to the temporary copy whose effective values were verified after compilation.
+            var actual = PlcFbdSource.ReadStaticAttributeSyntax(source, import.NewStatics);
+            var verified = import.VerifiedStaticSyntax;
+            if (verified == null || actual.Count != verified.Count || verified.Any(entry =>
+                !actual.TryGetValue(entry.Key, out var fields) || !entry.Value.OrderBy(field => field.Name, StringComparer.Ordinal)
+                    .SequenceEqual(fields.OrderBy(field => field.Name, StringComparer.Ordinal))))
+                throw new FbdImportException("Static attributes did not match the verified temporary copy.");
+            return;
+        }
+        foreach (string name in names)
+        {
+            var values = PlcStaticAttributes.ReadValues(sections, name);
+            if (values != attributes.Values)
+                throw new FbdImportException($"The four attributes of static variable '{name}' could not be verified against the preview.");
+        }
     }
 
     private static bool[][] ReadConverterEno(PlcBlock block)
@@ -337,28 +472,35 @@ public static partial class PlcSourceTools
     }
 
     private sealed class FbdTarget(PlcFbdChange change, int number, string fingerprint, string addedNetworks,
-        int existingNetworks, object inputReview)
+        int existingNetworks, PlcFbdPlanReview.Review review, PlcStaticAttributes? staticAttributes)
     {
         internal readonly PlcFbdChange Change = change;
         internal readonly int Number = number;
         internal readonly string Fingerprint = fingerprint;
         internal readonly string AddedNetworks = addedNetworks;
         internal readonly int ExistingNetworks = existingNetworks;
-        internal readonly object InputReview = inputReview;
+        internal readonly PlcFbdPlanReview.Review Review = review;
+        internal readonly PlcStaticAttributes? StaticAttributes = staticAttributes;
     }
 
-    private sealed class FbdImport(string blockPath, string name, int number, PlcBlockGroup group,
-        PlcSourceWorkspace documents, string source, string resources, bool[][] converterEno, PlcFbdResources? textResources)
+    private sealed class FbdImport(string blockPath, string name, int number, PlcBlockGroup group, PlcSoftware software,
+        PlcSourceWorkspace documents, string source, string resources, bool[][] converterEno, PlcFbdResources? textResources,
+        PlcStaticAttributes? staticAttributes, string[] newStatics, string originalFingerprint)
     {
         internal readonly string BlockPath = blockPath;
         internal readonly string Name = name;
         internal readonly int Number = number;
         internal readonly PlcBlockGroup Group = group;
+        internal readonly PlcSoftware Software = software;
         internal readonly PlcSourceWorkspace Documents = documents;
         internal readonly string Source = source;
         internal readonly string Resources = resources;
         internal readonly bool[][] ConverterEno = converterEno;
         internal readonly PlcFbdResources? TextResources = textResources;
+        internal readonly PlcStaticAttributes? StaticAttributes = staticAttributes;
+        internal readonly string[] NewStatics = newStatics;
+        internal readonly string OriginalFingerprint = originalFingerprint;
+        internal Dictionary<string, (string Name, string Token)[]>? VerifiedStaticSyntax { get; set; }
     }
 
     private sealed class FbdImportException(string message) : Exception(message) { }

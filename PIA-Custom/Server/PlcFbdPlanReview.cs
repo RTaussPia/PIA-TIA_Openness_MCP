@@ -20,14 +20,14 @@ internal sealed class PlcFbdPlanReview
         "TON", "TOF", "TP", "TONR"
     };
     private readonly string softwarePath;
-    private readonly Dictionary<string, string[]?> cachedInputs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ResolvedCall?> cachedCalls = new(StringComparer.OrdinalIgnoreCase);
 
     internal PlcFbdPlanReview(string softwarePath)
     {
         this.softwarePath = softwarePath;
     }
 
-    internal object Read(PlcFbdChange change, PlcBlock target, int previousNetworks)
+    internal Review Read(PlcFbdChange change, PlcBlock target, int previousNetworks)
     {
         var calls = change.Networks.SelectMany((network, index) =>
             PlcFbdSource.ReadInputCalls(network, previousNetworks + index + 1)).ToArray();
@@ -36,26 +36,36 @@ internal sealed class PlcFbdPlanReview
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var targets = calls.Select(call => (call, builtin: IsBuiltIn(call), symbol: ResolveSymbols(call, localTypes))).ToArray();
         string? unit = SoftwareUnit(change.BlockPath);
-        var newNames = targets.Where(item => !item.builtin && item.symbol != null && !cachedInputs.ContainsKey(CacheKey(unit, item.symbol)))
+        var newNames = targets.Where(item => !item.builtin && item.symbol != null && !cachedCalls.ContainsKey(CacheKey(unit, item.symbol)))
             .Select(item => item.symbol!).ToArray();
         if (newNames.Length > 0)
             LoadInputs(unit, newNames);
 
         var openInputs = new List<object>();
         var unresolvedCalls = new List<object>();
+        var newStatics = new HashSet<string>(change.Statics.Select(local => local.Name), StringComparer.OrdinalIgnoreCase);
+        var bindings = new Dictionary<string, StaticBinding>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in targets)
         {
             string display = (item.call.IsLocal ? "#" : "") + item.call.Name;
-            string[]? knownInputs = item.builtin || item.symbol == null ? null : cachedInputs[CacheKey(unit, item.symbol)];
+            var resolved = item.builtin || item.symbol == null ? null : cachedCalls[CacheKey(unit, item.symbol)];
+            string[]? knownInputs = resolved?.Inputs;
             if (knownInputs == null && !item.builtin)
                 unresolvedCalls.Add(new { network = item.call.Network, block = display });
+            if (resolved?.Block is FB functionBlock && item.call.IsLocal && item.call.Symbols.Length == 1 &&
+                newStatics.Contains(item.call.Symbols[0]))
+            {
+                string? importType = PlcFbdSource.FormatBlockType(functionBlock.Namespace, functionBlock.Name);
+                if (importType != null)
+                    bindings[item.call.Symbols[0]] = new StaticBinding(functionBlock, importType);
+            }
             foreach (var input in PlcFbdSource.OpenInputs(item.call, knownInputs))
                 openInputs.Add(new { network = item.call.Network, block = display, pin = input.Pin,
                     reason = input.Reason, manualReviewRequired = true });
             if (openInputs.Count > 64 || unresolvedCalls.Count > 32)
                 throw new FormatException("Too many input review items. Plan fewer networks at a time.");
         }
-        return new { openInputs, complete = unresolvedCalls.Count == 0, unresolvedCalls };
+        return new Review(new { openInputs, complete = unresolvedCalls.Count == 0, unresolvedCalls }, bindings);
     }
 
     private static Dictionary<string, string> ReadLocalTypes(PlcBlock target, PlcFbdChange change)
@@ -91,7 +101,7 @@ internal sealed class PlcFbdPlanReview
         }
         catch (Exception ex) when (ex is EngineeringException || ex is PortalException)
         {
-            foreach (var symbol in symbols) cachedInputs[CacheKey(unit, symbol)] = null;
+            foreach (var symbol in symbols) cachedCalls[CacheKey(unit, symbol)] = null;
             return;
         }
 
@@ -99,12 +109,18 @@ internal sealed class PlcFbdPlanReview
         foreach (var symbol in symbols)
         {
             string key = CacheKey(unit, symbol);
-            if (cachedInputs.ContainsKey(key)) continue;
+            if (cachedCalls.ContainsKey(key)) continue;
             var matches = unique[symbol.Last()].Where(block => NamespaceMatches(block, symbol)).Take(2).ToArray();
-            var sections = matches.Length == 1 ? ReadInterface(matches[0]) : null;
-            cachedInputs.Add(key, sections == null ? null : PlcInterfaceReader.ReadDeclarations(sections, "")
+            if (matches.Length != 1)
+            {
+                cachedCalls.Add(key, null);
+                continue;
+            }
+            var sections = ReadInterface(matches[0]);
+            var inputs = sections == null ? null : PlcInterfaceReader.ReadDeclarations(sections, "")
                 .Where(declaration => declaration.Section == "Input" || declaration.Section == "InOut")
-                .Select(declaration => declaration.Path).ToArray());
+                .Select(declaration => declaration.Path).ToArray();
+            cachedCalls.Add(key, new ResolvedCall(matches[0], inputs));
         }
     }
 
@@ -141,4 +157,31 @@ internal sealed class PlcFbdPlanReview
     }
 
     private static string CacheKey(string? unit, string[] symbol) => (unit ?? "") + "\0" + string.Join("\0", symbol);
+
+    internal sealed class Review(object inputReview, IReadOnlyDictionary<string, StaticBinding> bindings)
+    {
+        internal object InputReview { get; } = inputReview;
+
+        internal (string Name, string Type)[] ImportStatics(IEnumerable<(string Name, string Type)> declarations) =>
+            declarations.Select(local => Bindings.TryGetValue(local.Name, out var binding)
+                ? (local.Name, binding.ImportType) : local).ToArray();
+
+        internal bool HasSameBindings(Review other) => Bindings.Count == other.Bindings.Count &&
+            Bindings.All(pair => other.Bindings.TryGetValue(pair.Key, out var binding) &&
+                pair.Value.Block.Equals(binding.Block) && pair.Value.ImportType == binding.ImportType);
+
+        private IReadOnlyDictionary<string, StaticBinding> Bindings { get; } = bindings;
+    }
+
+    internal sealed class StaticBinding(FB block, string importType)
+    {
+        internal FB Block { get; } = block;
+        internal string ImportType { get; } = importType;
+    }
+
+    private sealed class ResolvedCall(PlcBlock block, string[]? inputs)
+    {
+        internal PlcBlock Block { get; } = block;
+        internal string[]? Inputs { get; } = inputs;
+    }
 }

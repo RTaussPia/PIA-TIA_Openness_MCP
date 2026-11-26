@@ -57,7 +57,42 @@ internal static partial class PlcFbdSource
             : Array.Empty<bool>()).ToArray();
     }
 
-    private static IEnumerable<string> ReadbackTokens(string source, PlcFbdResources? resources)
+    internal static string? ReadbackDifference(string expected, string actual,
+        PlcFbdResources? expectedResources = null, PlcFbdResources? actualResources = null)
+    {
+        using var expectedTokens = ReadbackTokens(expected, expectedResources).GetEnumerator();
+        using var actualTokens = ReadbackTokens(actual, actualResources).GetEnumerator();
+        while (expectedTokens.MoveNext())
+        {
+            var left = expectedTokens.Current;
+            if (!actualTokens.MoveNext())
+                return $"Readback ended before planned source line {SourceLine(expected, left.Offset)}.";
+            var right = actualTokens.Current;
+            if (left.Value != right.Value)
+                return $"SIMATIC SD differs at planned line {SourceLine(expected, left.Offset)} " +
+                    $"and readback line {SourceLine(actual, right.Offset)}: " +
+                    $"expected {DescribeReadbackToken(left.Value)}, read {DescribeReadbackToken(right.Value)}.";
+        }
+
+        return actualTokens.MoveNext()
+            ? $"Unexpected SIMATIC SD content begins at readback line {SourceLine(actual, actualTokens.Current.Offset)}."
+            : null;
+    }
+
+    private static int SourceLine(string source, int offset) => 1 + source.Take(offset).Count(character => character == '\n');
+
+    private static string DescribeReadbackToken(string value)
+    {
+        if (value[0] == '\0') return "a multilingual text reference";
+        if (value[0] == '"') return "a double-quoted token";
+        if (value[0] == '\'') return "a string literal";
+        if (value.StartsWith("//", StringComparison.Ordinal) || value.StartsWith("(*", StringComparison.Ordinal) ||
+            value.StartsWith("/*", StringComparison.Ordinal)) return "a comment";
+        if (value.Length > 64 || char.IsDigit(value[0])) return "a value";
+        return "`" + value + "`";
+    }
+
+    private static IEnumerable<(string Value, int Offset)> ReadbackTokens(string source, PlcFbdResources? resources)
     {
         var tokens = Tokens.Matches(source).Cast<Match>().Where(token => !char.IsWhiteSpace(token.Value[0])).ToArray();
         var ignored = new HashSet<int>();
@@ -95,11 +130,13 @@ internal static partial class PlcFbdSource
                 IsResourceAttribute(tokens[index - 3].Value))
             {
                 string? resource = resources.TokenFor(value.Trim('"'));
-                if (resource == null) throw new FormatException("A SIMATIC SD text reference could not be resolved.");
-                yield return "\0" + resource;
+                if (resource == null)
+                    throw new FormatException($"The SIMATIC SD text reference at line {SourceLine(source, tokens[index].Index)} could not be resolved.");
+                yield return ("\0" + resource, tokens[index].Index);
                 continue;
             }
-            yield return index > 0 && tokens[index - 1].Value == "." && value == "\"THIS\"" ? "THIS" : value;
+            yield return (index > 0 && tokens[index - 1].Value == "." && value == "\"THIS\"" ? "THIS" : value,
+                tokens[index].Index);
         }
     }
 
