@@ -115,6 +115,35 @@ class UsageProtocolTests(unittest.TestCase):
             result = self.call("PlanPlcFbdAppend", {"softwarePath": block["softwarePath"], "changes": changes})
             self.assertEqual(result["status"], "invalidChange")
 
+    def test_project_library_block_import_requires_exact_paths_version_and_approval(self):
+        tools = {tool["name"]: tool for tool in self.request("tools/list", {})["tools"]}
+        plan = tools["PlanProjectLibraryBlock"]
+        apply = tools["ApplyProjectLibraryBlock"]
+        self.assertTrue(plan["annotations"]["readOnlyHint"])
+        self.assertFalse(apply["annotations"]["readOnlyHint"])
+        self.assertTrue(apply["annotations"]["destructiveHint"])
+        self.assertEqual(set(plan["inputSchema"]["required"]), {"softwarePath", "entry", "versionId", "targetFolder"})
+        self.assertEqual(set(apply["inputSchema"]["required"]), {"planId", "approved"})
+        args = {"softwarePath": "PLC", "entry": "Types/Logging/FC_Log",
+                "versionId": str(uuid.uuid4()), "targetFolder": "Library/Logging"}
+        for invalid, status in [
+            ({"softwarePath": "PLC\nOther"}, "invalidSoftwarePath"),
+            ({"entry": "MasterCopies/FC_Log"}, "invalidEntry"),
+            ({"entry": "Types/../FC_Log"}, "invalidEntry"),
+            ({"entry": "Types//FC_Log"}, "invalidEntry"),
+            ({"versionId": "3.15.0"}, "invalidVersionId"),
+            ({"versionId": str(uuid.UUID(int=0))}, "invalidVersionId"),
+            ({"targetFolder": "../Logging"}, "invalidTargetFolder"),
+            ({"targetFolder": "Library\\Logging"}, "invalidTargetFolder"),
+        ]:
+            with self.subTest(invalid=invalid):
+                self.assertEqual(self.call("PlanProjectLibraryBlock", {**args, **invalid})["status"], status)
+        plan_id = str(uuid.uuid4())
+        self.assertEqual(self.call("ApplyProjectLibraryBlock", {"planId": plan_id, "approved": False})["status"],
+                         "approvalRequired")
+        self.assertEqual(self.call("ApplyProjectLibraryBlock", {"planId": plan_id, "approved": True})["status"],
+                         "planNotFound")
+
     def test_fbd_documentation_is_optional_and_validated(self):
         basic = {"blockPath": "Station/FB_Station", "networks": ["RUNG #In Coil(#Out) END_RUNG"]}
         documented = {**basic, "networkTitles": ["Capture sensor data"],

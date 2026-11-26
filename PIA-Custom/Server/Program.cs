@@ -24,6 +24,8 @@ internal static class Program
         var tools = new List<McpServerTool>
         {
             McpServerTool.Create(typeof(LibraryUsageTool).GetMethod(nameof(LibraryUsageTool.CheckLibraryUsage))!),
+            McpServerTool.Create(typeof(ProjectLibraryBlockTool).GetMethod(nameof(ProjectLibraryBlockTool.PlanProjectLibraryBlock))!),
+            McpServerTool.Create(typeof(ProjectLibraryBlockTool).GetMethod(nameof(ProjectLibraryBlockTool.ApplyProjectLibraryBlock))!),
             McpServerTool.Create(typeof(ProjectStructureTool).GetMethod(nameof(ProjectStructureTool.GetProjectStructure))!),
             McpServerTool.Create(typeof(ProjectKnowledgeTool).GetMethod(nameof(ProjectKnowledgeTool.GetProjectKnowledge))!),
             McpServerTool.Create(typeof(PlcInspectionTools).GetMethod(nameof(PlcInspectionTools.GetPlcBlockInterface))!),
